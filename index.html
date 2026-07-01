@@ -317,7 +317,7 @@ tbody td{padding:10px 12px;vertical-align:middle}
   <div class="card">
     <div class="tw">
       <table>
-        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Size</th><th>Occupation</th><th>Style</th><th>Profile</th><th>Events</th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Size</th><th>Occupation</th><th>Style</th><th>Profile</th><th>#</th></tr></thead>
         <tbody id="dir-tbody"></tbody>
       </table>
     </div>
@@ -476,8 +476,9 @@ tbody td{padding:10px 12px;vertical-align:middle}
             <div><div style="font-size:13px;font-weight:600" id="sync-status-txt">Not configured</div><div style="font-size:11px;color:var(--muted);margin-top:2px" id="sync-status-sub">Add your Apps Script URL below</div></div>
           </div>
           <div class="fgrp"><label>Apps Script URL</label><input type="url" id="sheets-url" placeholder="https://script.google.com/macros/s/…/exec"></div>
-          <div style="display:flex;gap:10px">
-            <button class="btn bp" id="btn-sync">Pull from Google Sheets</button>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn bp" id="btn-sync">Backup to Google Sheets ↑</button>
+            <button class="btn bs" id="btn-restore">Restore from Google Sheets ↓</button>
             <button class="btn bs" id="btn-save-url">Save URL</button>
           </div>
           <div id="sync-msg" style="margin-top:12px;font-size:13px"></div>
@@ -719,12 +720,21 @@ function renderDir(){
   if(dirPage>pages)dirPage=1;
   const sl=fc.slice((dirPage-1)*PER,dirPage*PER);
   const tb=$('dir-tbody');
-  tb.innerHTML=sl.length?sl.map(c=>`<tr data-id="${c.id}"><td><strong>${x(c.name)}</strong></td><td class="tdm">${x(c.email)}</td><td class="tdm">${x(c.phone)}</td><td>${x(c.size)}</td><td class="tdm">${x(c.occ)}</td><td style="font-size:12px">${x((c.style||'').split(',')[0].split(' ').slice(0,3).join(' '))}</td><td>${c.intake?'<span class="badge bg-green">Full Profile</span>':'<span class="badge bg-grey">Attendee</span>'}</td><td><span class="badge bg-gold">${c.events.length}</span></td></tr>`).join('')
+  tb.innerHTML=sl.length?sl.map(c=>`<tr data-id="${c.id}"><td><strong>${x(c.name)}</strong></td><td class="tdm" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x(c.email)}</td><td class="tdm">${x(c.phone)}</td><td>${x(c.size)}</td><td class="tdm">${x(c.occ)}</td><td style="font-size:12px">${x((c.style||'').split(',')[0].split(' ').slice(0,3).join(' '))}</td><td>${c.intake===true||(c.occ||c.style||c.age)?'<span class="badge bg-green">Full Profile</span>':'<span class="badge bg-grey">Attendee</span>'}</td><td><span class="badge bg-gold">${Array.isArray(c.events)?c.events.length:0}</span></td></tr>`).join('')
     :`<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:40px">No clients match your filters</td></tr>`;
   tb.querySelectorAll('tr[data-id]').forEach(row=>{row.addEventListener('click',()=>{const c=clients.find(cl=>cl.id===row.dataset.id);if(c)openProfile(c);});});
   $('pag-info').textContent=fc.length?`${(dirPage-1)*PER+1}–${Math.min(dirPage*PER,fc.length)} of ${fc.length}`:'';
   const pb=$('pag-btns');pb.innerHTML='';
-  for(let p=1;p<=pages;p++){const b=document.createElement('button');b.className='pb'+(p===dirPage?' active':'');b.textContent=p;b.onclick=()=>{dirPage=p;renderDir();};pb.appendChild(b);}
+  // Show smart pagination: first, last, and pages around current
+  const delta=2;
+  const range=[];
+  for(let p=Math.max(2,dirPage-delta);p<=Math.min(pages-1,dirPage+delta);p++)range.push(p);
+  const pagesToShow=[1,...range,pages].filter((v,i,a)=>v>=1&&v<=pages&&a.indexOf(v)===i);
+  let last=0;
+  pagesToShow.forEach(p=>{
+    if(last&&p-last>1){const e=document.createElement('span');e.textContent='…';e.style.cssText='padding:5px 6px;color:var(--muted);font-size:12px';pb.appendChild(e);}
+    const b=document.createElement('button');b.className='pb'+(p===dirPage?' active':'');b.textContent=p;b.onclick=()=>{dirPage=p;renderDir();};pb.appendChild(b);last=p;
+  });
 }
 function initDirFilters(){
   ['dir-q','dir-style','dir-size','dir-profile'].forEach(id=>{
@@ -938,9 +948,12 @@ function initAddClient(){
     const name=$('f-name').value.trim();
     if(!name){$('save-msg').innerHTML='<span style="color:var(--red)">Name is required.</span>';return;}
     const c={id:'c'+Date.now(),name,email:$('f-email').value.trim(),phone:$('f-phone').value.trim(),birthday:$('f-bday').value.trim(),address:$('f-addr').value.trim(),first_consult:new Date().toISOString().slice(0,10),height:$('f-height').value.trim(),size:$('f-size').value.trim(),hair:$('f-hair').value.trim(),eyes:$('f-eyes').value.trim(),age:$('f-age').value.trim(),occ:$('f-occ').value.trim(),style:$('f-style').value.trim(),change:$('f-change').value.trim(),work:$('f-work').value.trim(),casual:$('f-casual').value.trim(),liked:$('f-clike').value.trim(),disliked:$('f-cavoid').value.trim(),notes:$('f-notes').value.trim(),intake:true,events:[]};
-    clients.push(c);DB.clients.push(c);
-    $('save-msg').innerHTML=`<span style="color:var(--green)">✓ ${x(name)} added!</span>`;
+    clients.push(c);
+    localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients));
+    $('save-msg').innerHTML=`<span style="color:var(--green)">✓ ${x(name)} added and saved!</span>`;
     $('btn-clr').click();renderStats();
+    // Push to Sheets in background
+    pushToSheets(false).then(()=>console.log('New client synced to Sheets'));
   });
   $('btn-clr')?.addEventListener('click',()=>{
     ['f-name','f-email','f-phone','f-bday','f-addr','f-height','f-size','f-hair','f-eyes','f-age','f-occ','f-style','f-change','f-work','f-casual','f-clike','f-cavoid','f-notes'].forEach(id=>{const el=$(id);if(el)el.value='';});
@@ -959,14 +972,42 @@ function renderSync(){
     <div class="pf"><span class="pfl">Attendees Only</span><span class="pfv" style="font-weight:600">${clients.filter(c=>!c.intake).length}</span></div>
     <div class="pf"><span class="pfl">Events on File</span><span class="pfv" style="font-weight:600">${events.length}</span></div>
     <div style="margin-top:20px;padding:14px;background:var(--gold-pale);border-radius:6px;font-size:12px;color:var(--muted);line-height:1.6">
-      <strong style="color:var(--text)">To enable sync & email blast:</strong><br>
-      1. Create a Google Sheet for Kathryn<br>
-      2. Extensions → Apps Script → paste km2-apps-script.js<br>
-      3. Deploy as Web App → copy /exec URL<br>
-      4. Paste URL above → Save → Sync
+      <strong style="color:var(--text)">How your data is stored:</strong><br>
+      All clients live in this browser permanently.<br>
+      New clients save instantly and back up to<br>
+      Google Sheets automatically.<br><br>
+      <strong style="color:var(--text)">If you ever need to recover:</strong><br>
+      Paste your Apps Script URL and click<br>
+      <strong>Restore from Google Sheets</strong> to rebuild<br>
+      your full client database in one click.
     </div>`;
   const saved=localStorage.getItem(SHEETS_URL_KEY);
   if(saved){$('sheets-url').value=saved;setSyncStatus('ok','URL configured','Ready to sync');}
+  $('btn-restore')?.addEventListener('click',async()=>{
+    const url=localStorage.getItem(SHEETS_URL_KEY);
+    if(!url){$('sync-msg').innerHTML='<span class="status-err">Paste your Apps Script URL first.</span>';return;}
+    if(!confirm('This will restore all client data from Google Sheets, replacing what is currently in this browser. Continue?'))return;
+    $('sync-msg').innerHTML='<span class="status-info"><span class="spinner"></span>Restoring from Google Sheets…</span>';
+    $('btn-restore').disabled=true;
+    try{
+      const res=await fetch(url);
+      const data=await res.json();
+      if(data.status==='ok'&&data.clients&&data.clients.length){
+        clients=data.clients.map(sheetsRowToClient);
+        localStorage.setItem(CLIENTS_KEY,JSON.stringify(clients));
+        localStorage.setItem(SYNCED_KEY,new Date().toISOString());
+        $('sync-msg').innerHTML=`<span class="status-ok">✓ Restored ${clients.length} clients from Google Sheets.</span>`;
+        $('sync-last').textContent=`Restored: ${new Date().toLocaleString()}`;
+        setSyncStatus('ok','Restored',`${clients.length} clients`);
+        renderOverview();renderSync();
+      } else {
+        $('sync-msg').innerHTML=`<span class="status-err">Error: ${x(data.message||'No data found in Sheet')}. Make sure you have backed up first.</span>`;
+      }
+    }catch(err){
+      $('sync-msg').innerHTML=`<span class="status-err">Restore failed: ${x(err.message)}</span>`;
+    }finally{$('btn-restore').disabled=false;}
+  });
+
   $('btn-save-url')?.addEventListener('click',()=>{
     const url=$('sheets-url').value.trim();
     if(!url)return;
@@ -977,20 +1018,15 @@ function renderSync(){
   $('btn-sync')?.addEventListener('click',async()=>{
     const url=localStorage.getItem(SHEETS_URL_KEY);
     if(!url){$('sync-msg').innerHTML='<span class="status-err">Paste your Apps Script URL first.</span>';return;}
-    $('sync-msg').innerHTML='<span class="status-info"><span class="spinner"></span>Fetching latest data from Google Sheets…</span>';
+    $('sync-msg').innerHTML='<span class="status-info"><span class="spinner"></span>Syncing all ${clients.length} clients to Google Sheets…</span>';
     $('btn-sync').disabled=true;
     try{
-      const res=await fetch(url);
-      const data=await res.json();
-      if(data.status==='ok'&&data.clients&&data.clients.length){
-        clients=data.clients.map(sheetsRowToClient);
-        localStorage.setItem(CLIENTS_KEY,JSON.stringify(clients));
-        localStorage.setItem(SYNCED_KEY,new Date().toISOString());
-        $('sync-msg').innerHTML=`<span class="status-ok">✓ ${clients.length} clients loaded from Google Sheets.</span>`;
+      const data = await pushToSheets(false);
+      if(data&&data.status==='ok'){
+        $('sync-msg').innerHTML=`<span class="status-ok">✓ ${clients.length} clients backed up to Google Sheets.</span>`;
         $('sync-last').textContent=`Last synced: ${new Date().toLocaleString()}`;
-        setSyncStatus('ok','Synced',`${clients.length} clients`);
-        renderOverview();renderSync();
-      } else {$('sync-msg').innerHTML=`<span class="status-err">Error: ${x(data.message||'No data returned')}</span>`;}
+        setSyncStatus('ok','Synced',`${clients.length} clients · ${new Date().toLocaleTimeString()}`);
+      } else {$('sync-msg').innerHTML=`<span class="status-err">Error syncing to Sheets.</span>`;}
     }catch(err){$('sync-msg').innerHTML=`<span class="status-err">Failed: ${x(err.message)}</span>`;}
     finally{$('btn-sync').disabled=false;}
   });
@@ -1032,6 +1068,19 @@ function switchTab(tab){
 // ═══════════════════════════════════════
 // LIVE DATA LOADING
 // ═══════════════════════════════════════
+function cleanDate(str) {
+  if (!str) return '';
+  // Handle ugly JS date strings like "Mon Oct 12 2026 00:00:00 GMT-0400..."
+  if (str.includes('GMT') || str.includes('UTC')) {
+    try {
+      const d = new Date(str);
+      if (!isNaN(d)) return d.toISOString().slice(0, 10);
+    } catch(e) {}
+  }
+  // Handle already clean dates (YYYY-MM-DD or MM/DD/YYYY)
+  return str.slice(0, 10);
+}
+
 function sheetsRowToClient(row, idx) {
   // Convert a Google Sheets row (flat object) to dashboard client format
   const eventsRaw = row.events_attended || row.events || '';
@@ -1058,7 +1107,7 @@ function sheetsRowToClient(row, idx) {
     email:         row.email || '',
     phone:         row.phone || row.cell || '',
     birthday:      row.birthday || '',
-    first_consult: row.first_seen_date || row.first_consult || row.date || '',
+    first_consult: cleanDate(row.first_seen_date || row.first_consult || row.date || ''),
     address:       row.address || fromNotes(/Address:\s*([^;\n]+)/i),
     height:        row.height || fromNotes(/Height:\s*([^,;\n]+)/i),
     size:          row.size  || fromNotes(/Size:\s*([^,;\n]+)/i),
@@ -1079,43 +1128,64 @@ function sheetsRowToClient(row, idx) {
 }
 
 async function loadLiveData() {
-  const url = localStorage.getItem(SHEETS_URL_KEY);
-
-  // Always try cached data first for instant load
+  // localStorage is the database — always load from it
   const cached = localStorage.getItem(CLIENTS_KEY);
   if (cached) {
     try {
       clients = JSON.parse(cached);
+      return true;
     } catch(e) {}
   }
-
-  if (!url) return false; // No URL configured yet — use demo data
-
-  showLoadingBanner('Loading your client data from Google Sheets…');
-  try {
-    const res  = await fetch(url);
-    const data = await res.json();
-    if (data.status === 'ok' && data.clients && data.clients.length) {
-      const liveClients = data.clients.map(sheetsRowToClient);
-      clients = liveClients;
-      localStorage.setItem(CLIENTS_KEY, JSON.stringify(liveClients));
-      localStorage.setItem(SYNCED_KEY, new Date().toISOString());
-      hideLoadingBanner();
-      return true;
-    }
-  } catch(err) {
-    console.warn('Could not load from Sheets, using cached data:', err);
-  }
-
-  // Fall back to cached data silently
-  if (cached) {
-    showLoadingBanner('Using cached data — could not reach Google Sheets', true);
-    setTimeout(hideLoadingBanner, 3000);
-    return true;
-  }
-
-  hideLoadingBanner();
+  // No local data yet — this is first run, use demo data
   return false;
+}
+
+// Push all current clients to Google Sheets (backup)
+async function pushToSheets(showFeedback) {
+  const url = localStorage.getItem(SHEETS_URL_KEY);
+  if (!url) return;
+  if (showFeedback) showLoadingBanner('Syncing to Google Sheets…');
+  try {
+    const payload = clients.map((c, i) => ({
+      id:          c.id || 'c'+i,
+      name:        c.name || '',
+      email:       c.email || '',
+      phone:       c.phone || '',
+      birthday:    c.birthday || '',
+      address:     c.address || '',
+      height:      c.height || '',
+      size:        c.size || '',
+      hair:        c.hair || '',
+      eyes:        c.eyes || '',
+      age:         c.age || '',
+      occ:         c.occ || '',
+      style:       c.style || '',
+      change:      c.change || '',
+      work:        c.work || '',
+      casual:      c.casual || '',
+      liked:       c.liked || '',
+      disliked:    c.disliked || '',
+      notes:       c.notes || '',
+      intake:      c.intake ? 'Yes' : 'No',
+      events:      Array.isArray(c.events) ? c.events.join(' | ') : (c.events || ''),
+      first_consult: c.first_consult || ''
+    }));
+    const res = await fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'sync', clients: payload })
+    });
+    const data = await res.json();
+    if (showFeedback) {
+      hideLoadingBanner();
+      if (data.status === 'ok') {
+        localStorage.setItem(SYNCED_KEY, new Date().toISOString());
+      }
+    }
+    return data;
+  } catch(err) {
+    if (showFeedback) hideLoadingBanner();
+    console.warn('Sheets sync failed:', err);
+  }
 }
 
 function showLoadingBanner(msg, warn) {
